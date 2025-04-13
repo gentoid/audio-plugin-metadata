@@ -1,12 +1,14 @@
-use std::{ffi::CStr, os::raw::c_void, path::Path, ptr::NonNull};
+use std::{
+    ffi::CStr,
+    os::raw::{c_char, c_void},
+    path::Path,
+    ptr::NonNull,
+};
 
 use libloading::{Library, Symbol};
-use vst2_sys::{AEffect, HostCallbackProc, effect_opcodes as opcode};
+use vst2_sys::{AEffect, effect_opcodes as opcode};
 
-use crate::types::{PluginFormat, PluginInfo};
-
-type VstIntPtr = isize;
-type VstMain = unsafe extern "C" fn(callback: HostCallbackProc) -> *mut AEffect;
+use crate::types::{PluginFormat, PluginInfo, Vst2Category, VstIntPtr, VstMain};
 
 extern "C" fn dummy_host_callback(
     _effect: *mut AEffect,
@@ -16,7 +18,6 @@ extern "C" fn dummy_host_callback(
     ptr: *mut c_void,
     _opt: f32,
 ) -> VstIntPtr {
-    println!("Passed opcode: {opcode}");
     match opcode {
         1 => 2100, // audioMasterVersion
         33 => {
@@ -36,6 +37,23 @@ extern "C" fn dummy_host_callback(
             1
         }
         35 => 1000, // audioMasterGetVendorVersion
+        vst2_sys::host_opcodes::CAN_DO => {
+            if ptr.is_null() {
+                return 0;
+            }
+
+            let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) };
+            println!("Can do {:?}?", cstr);
+
+            if let Ok(text) = cstr.to_str() {
+                match text {
+                    "sendVstTimeInfo" => 0,
+                    _ => 0,
+                }
+            } else {
+                0
+            }
+        }
         _ => 0,
     }
 }
@@ -61,32 +79,36 @@ pub fn scan_vst2(path: &Path) -> Result<PluginInfo, Box<dyn std::error::Error>> 
 
     let name = get_string(eff, opcode::GET_EFFECT_NAME)
         .or_else(|| get_string(eff, opcode::GET_PRODUCT_STRING));
-    let vendor = get_string(eff, opcode::GET_VENDOR_STRING);
-    let version = get_string(eff, opcode::GET_VENDOR_VERSION);
-    let category = get_string(eff, opcode::GET_PLUG_CATEGORY);
+    let category_raw = get_num(eff, opcode::GET_PLUG_CATEGORY) as i32;
 
-    Ok(PluginInfo {
-        path: path.display().to_string(),
+    let info = PluginInfo {
+        path: path.to_owned(),
         name,
-        vendor,
-        version,
-        category,
+        vendor: get_string(eff, opcode::GET_VENDOR_STRING),
+        version: eff.version as u32,
+        category: Vst2Category::from_num(category_raw),
+        category_raw,
         unique_id: eff.unique_id as u32,
-        inputs: eff.num_inputs as u32,
-        outputs: eff.num_outputs as u32,
-        parameters: eff.num_params as u32,
-        presets: eff.num_programs as u32,
-        is_synth: eff.flags & (1 << 8) != 0,
-        has_editor: eff.flags & (1 << 0) != 0,
         format: PluginFormat::Vst2,
-    })
+    };
+
+    ((eff.dispatcher)(
+        eff as *const _ as *mut AEffect,
+        opcode::CLOSE,
+        0,
+        0,
+        std::ptr::null_mut(),
+        0.0,
+    ));
+
+    Ok(info)
 }
 
 fn get_string(eff: &AEffect, opcode: i32) -> Option<String> {
     let mut buffer = [0i8; 64];
     let dispatcher = eff.dispatcher;
 
-    let result: VstIntPtr = dispatcher(
+    let result = dispatcher(
         eff as *const _ as *mut AEffect,
         opcode,
         0,
@@ -108,4 +130,17 @@ fn get_string(eff: &AEffect, opcode: i32) -> Option<String> {
     }
 
     Some(string)
+}
+
+fn get_num(eff: &AEffect, opcode: i32) -> VstIntPtr {
+    let dispatcher = eff.dispatcher;
+
+    dispatcher(
+        eff as *const _ as *mut AEffect,
+        opcode,
+        0,
+        0,
+        std::ptr::null_mut(),
+        0.0,
+    )
 }
