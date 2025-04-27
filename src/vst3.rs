@@ -1,6 +1,7 @@
 use std::{error::Error, mem::MaybeUninit, path::Path};
 
 use libloading::Library;
+use types::{FactoryFlags, FactoryInfo};
 use vst3_sys::{
     VstPtr,
     base::{
@@ -13,6 +14,8 @@ use crate::{
     types::Vst3Main,
     utils::{i8_to_string, i16_to_string},
 };
+
+pub mod types;
 
 pub fn scan_vst3(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let lib = unsafe { Library::new(path) }?;
@@ -28,20 +31,62 @@ pub fn scan_vst3(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
         VstPtr::<dyn IPluginFactory>::owned(factory_ptr as *mut *mut _)
             .ok_or("Failed to create VstPtr for factory")?
     };
-    let mut f_info: PFactoryInfo = unsafe { std::mem::zeroed() };
-    let res = unsafe { factory.get_factory_info(&mut f_info) };
+    let factory_info = read_factory_info(&factory)?;
+
+    println!("factory info = {:#?}", factory_info);
+
+    scan_classes(factory)
+}
+
+fn read_factory_info(factory: &VstPtr<dyn IPluginFactory>) -> Result<FactoryInfo, Box<dyn Error>> {
+    let mut info = MaybeUninit::<PFactoryInfo>::uninit();
+    let res = unsafe { factory.get_factory_info(info.as_mut_ptr()) };
 
     if res != kResultOk {
         return Err(format!("get_factory_info failed").into());
     }
 
-    let vendor = i8_to_string(&f_info.vendor);
-    let url = i8_to_string(&f_info.url);
-    let email = i8_to_string(&f_info.email);
+    let info = unsafe { info.assume_init() };
 
-    println!("vendor = {}, url = {}, email = {}", vendor, url, email);
+    let vendor = i8_to_string(&info.vendor);
+    let url = i8_to_string(&info.url);
+    let email = i8_to_string(&info.email);
 
-    scan_classes(factory)
+    Ok(FactoryInfo {
+        vendor,
+        url,
+        email,
+        flags: read_flags(info.flags),
+    })
+}
+
+fn read_flags(mut flags: i32) -> Vec<FactoryFlags> {
+    let mut res = vec![];
+
+    if flags >= 32 {
+        flags = 0;
+    }
+
+    if flags >= 16 {
+        res.push(FactoryFlags::Unicode);
+        flags -= 16;
+    }
+
+    if flags >= 8  {
+        res.push(FactoryFlags::ComponentNonDiscardable);
+        flags -= 8;
+    }
+
+    if flags >= 2 {
+        res.push(FactoryFlags::LicenseCheck);
+        flags -= 2;
+    }
+
+    if flags >= 1 {
+        res.push(FactoryFlags::ClassesDiscardable);
+    }
+
+    res
 }
 
 fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<(), Box<dyn std::error::Error>> {
