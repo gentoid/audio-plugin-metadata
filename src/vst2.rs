@@ -1,14 +1,14 @@
 use std::{
     ffi::CStr,
     os::raw::{c_char, c_void},
-    path::Path,
+    path::PathBuf,
     ptr::NonNull,
 };
 
 use libloading::{Library, Symbol};
 use vst2_sys::{AEffect, effect_opcodes as opcode};
 
-use crate::types::{PluginFormat, PluginInfo, Vst2Category, Vst2IntPtr, Vst2Main};
+use crate::types::{Vst2Category, Vst2Info, Vst2IntPtr, Vst2Main};
 
 extern "C" fn dummy_host_callback(
     _effect: *mut AEffect,
@@ -58,7 +58,7 @@ extern "C" fn dummy_host_callback(
     }
 }
 
-pub fn scan_vst2(path: &Path) -> Result<PluginInfo, Box<dyn std::error::Error>> {
+pub fn scan_vst2(path: &PathBuf) -> Result<Vst2Info, Box<dyn std::error::Error>> {
     let lib = unsafe { Library::new(path) }?;
 
     let vst_main: Symbol<Vst2Main> =
@@ -81,7 +81,7 @@ pub fn scan_vst2(path: &Path) -> Result<PluginInfo, Box<dyn std::error::Error>> 
         .or_else(|| get_string(eff, opcode::GET_PRODUCT_STRING));
     let category_raw = get_num(eff, opcode::GET_PLUG_CATEGORY) as i32;
 
-    let info = PluginInfo {
+    let info = Vst2Info {
         path: path.to_owned(),
         name,
         vendor: get_string(eff, opcode::GET_VENDOR_STRING),
@@ -89,7 +89,6 @@ pub fn scan_vst2(path: &Path) -> Result<PluginInfo, Box<dyn std::error::Error>> 
         category: Vst2Category::from_num(category_raw),
         category_raw,
         unique_id: eff.unique_id as u32,
-        format: PluginFormat::Vst2,
     };
 
     ((eff.dispatcher)(

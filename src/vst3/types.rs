@@ -3,7 +3,7 @@ use vst3_sys::sys::GUID;
 pub type IID = GUID;
 
 #[derive(Debug)]
-pub struct Info {
+pub struct Vst3Info {
     pub factory_info: FactoryInfo,
     pub classes: ClassesInfo,
 }

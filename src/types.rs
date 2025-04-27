@@ -2,17 +2,20 @@ use std::{ffi::c_void, path::PathBuf};
 
 use vst2_sys::{AEffect, HostCallbackProc};
 
+use crate::vst3::types::Vst3Info;
+
 pub type Vst2IntPtr = isize;
 pub type Vst2Main = unsafe extern "C" fn(callback: HostCallbackProc) -> *mut AEffect;
 pub type Vst3Main = unsafe extern "system" fn() -> *mut c_void;
 
 #[derive(Debug)]
-pub enum PluginFormat {
-    Vst2,
+pub enum PluginInfo {
+    Vst2(Vst2Info),
+    Vst3(Vst3Info),
 }
 
 #[derive(Debug)]
-pub struct PluginInfo {
+pub struct Vst2Info {
     pub path: PathBuf,
     pub name: Option<String>,
     pub vendor: Option<String>,
@@ -20,7 +23,6 @@ pub struct PluginInfo {
     pub unique_id: u32,
     pub category: Vst2Category,
     pub category_raw: i32,
-    pub format: PluginFormat,
 }
 
 #[derive(Debug)]

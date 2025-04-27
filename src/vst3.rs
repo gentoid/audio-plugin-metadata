@@ -1,8 +1,8 @@
-use std::{error::Error, mem::MaybeUninit, path::Path};
+use std::{error::Error, mem::MaybeUninit, path::PathBuf};
 
 use libloading::Library;
 use types::{
-    ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, Info,
+    ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, Vst3Info,
 };
 use vst3_sys::{
     VstPtr,
@@ -19,7 +19,7 @@ use crate::{
 
 pub mod types;
 
-pub fn scan_vst3(path: &Path) -> Result<Info, Box<dyn Error>> {
+pub fn scan_vst3(path: &PathBuf) -> Result<Vst3Info, Box<dyn Error>> {
     let lib = unsafe { Library::new(path) }?;
 
     let get_factory: libloading::Symbol<Vst3Main> = unsafe { lib.get(b"GetPluginFactory\0") }?;
@@ -37,7 +37,7 @@ pub fn scan_vst3(path: &Path) -> Result<Info, Box<dyn Error>> {
 
     let classes = scan_classes(factory)?;
 
-    Ok(Info {
+    Ok(Vst3Info {
         factory_info,
         classes,
     })
