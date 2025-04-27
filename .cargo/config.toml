@@ -1,0 +1,2 @@
+[env]
+VST3_SDK_DIR = { value = "../VST_SDK/vst3sdk", relative = true }

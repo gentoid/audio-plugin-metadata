@@ -8,16 +8,16 @@ use std::{
 use libloading::{Library, Symbol};
 use vst2_sys::{AEffect, effect_opcodes as opcode};
 
-use crate::types::{PluginFormat, PluginInfo, Vst2Category, VstIntPtr, VstMain};
+use crate::types::{PluginFormat, PluginInfo, Vst2Category, Vst2IntPtr, Vst2Main};
 
 extern "C" fn dummy_host_callback(
     _effect: *mut AEffect,
     opcode: i32,
     _index: i32,
-    _value: VstIntPtr,
+    _value: Vst2IntPtr,
     ptr: *mut c_void,
     _opt: f32,
-) -> VstIntPtr {
+) -> Vst2IntPtr {
     match opcode {
         1 => 2100, // audioMasterVersion
         33 => {
@@ -61,7 +61,7 @@ extern "C" fn dummy_host_callback(
 pub fn scan_vst2(path: &Path) -> Result<PluginInfo, Box<dyn std::error::Error>> {
     let lib = unsafe { Library::new(path) }?;
 
-    let vst_main: Symbol<VstMain> =
+    let vst_main: Symbol<Vst2Main> =
         unsafe { lib.get(b"VSTPluginMain").or_else(|_| lib.get(b"main"))? };
 
     let effect = unsafe { vst_main(dummy_host_callback) };
@@ -132,7 +132,7 @@ fn get_string(eff: &AEffect, opcode: i32) -> Option<String> {
     Some(string)
 }
 
-fn get_num(eff: &AEffect, opcode: i32) -> VstIntPtr {
+fn get_num(eff: &AEffect, opcode: i32) -> Vst2IntPtr {
     let dispatcher = eff.dispatcher;
 
     dispatcher(
