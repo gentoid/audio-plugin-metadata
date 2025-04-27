@@ -1,9 +1,12 @@
+use std::path::PathBuf;
+
 use vst3_sys::sys::GUID;
 
 pub type IID = GUID;
 
 #[derive(Debug)]
 pub struct Vst3Info {
+    pub path: PathBuf,
     pub factory_info: FactoryInfo,
     pub classes: ClassesInfo,
 }

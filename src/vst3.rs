@@ -38,6 +38,7 @@ pub fn scan_vst3(path: &PathBuf) -> Result<Vst3Info, Box<dyn Error>> {
     let classes = scan_classes(factory)?;
 
     Ok(Vst3Info {
+        path: path.clone(),
         factory_info,
         classes,
     })

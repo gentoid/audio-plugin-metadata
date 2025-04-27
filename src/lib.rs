@@ -22,3 +22,37 @@ pub fn scan_file(path: &PathBuf) -> Result<PluginInfo, Box<dyn Error>> {
 
     Err("The file extension isn't correct. Expected to be one of: 'vst3', 'dll'".into())
 }
+
+pub fn scan_directory(path: &PathBuf) -> Result<Vec<PluginInfo>, Box<dyn Error>> {
+    if !path.is_dir() {
+        return Err(format!("{} is not a directory", path.display()).into());
+    }
+
+    let mut collected = vec![];
+
+    for entry in path.read_dir()? {
+        match entry {
+            Err(err) => println!("Error reading entry in dir {}: {}", path.display(), err),
+            Ok(entry) => {
+                let nested_path = entry.path();
+                if nested_path.is_dir() {
+                    match scan_directory(&nested_path) {
+                        Err(err) => println!("Error reading {}: {}", nested_path.display(), err),
+                        Ok(mut data) => collected.append(&mut data),
+                    }
+                } else {
+                    if let Some(file_ext) = nested_path.extension() {
+                        if file_ext == OsStr::new("dll") || file_ext == OsStr::new("vst3") {
+                            match scan_file(&nested_path) {
+                                Err(err) => println!("Error scanning {}: {}", nested_path.display(), err),
+                                Ok(info) => collected.push(info),
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(collected)
+}
