@@ -1,7 +1,7 @@
 use std::{error::Error, mem::MaybeUninit, path::Path};
 
 use libloading::Library;
-use types::{FactoryFlags, FactoryInfo};
+use types::{ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, FactoryFlags, FactoryInfo};
 use vst3_sys::{
     VstPtr,
     base::{
@@ -72,7 +72,7 @@ fn read_flags(mut flags: i32) -> Vec<FactoryFlags> {
         flags -= 16;
     }
 
-    if flags >= 8  {
+    if flags >= 8 {
         res.push(FactoryFlags::ComponentNonDiscardable);
         flags -= 8;
     }
@@ -89,24 +89,62 @@ fn read_flags(mut flags: i32) -> Vec<FactoryFlags> {
     res
 }
 
+fn read_class_flags(mut flags: u32) -> Vec<ClassFlags> {
+    let mut classes = vec![];
+
+    let all_flags = [
+        ClassFlags::IsSynth,
+        ClassFlags::IsEffect,
+        ClassFlags::Undef,
+        ClassFlags::PluginDoesMidi,
+        ClassFlags::PluginDoesAudio,
+        ClassFlags::NoAudioIO,
+        ClassFlags::NeedMidiInput,
+        ClassFlags::NeedMidiOutput,
+    ];
+
+    for flag in all_flags {
+        if get_bit_and_shift(&mut flags) {
+            classes.push(flag);
+        }
+    }
+
+    classes
+}
+
+fn get_bit_and_shift(flags: &mut u32) -> bool {
+    let bit = (*flags) & 1 == 1;
+    (*flags) >>= 1;
+    bit
+}
+
 fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<(), Box<dyn std::error::Error>> {
     let count = unsafe { factory.count_classes() };
 
     println!("Found {count} class(es):");
 
     if let Some(factory) = factory.cast::<dyn IPluginFactory3>() {
-        return scan3(factory);
+        let classes = scan3(factory);
+        println!("Classes [3]:\n{:#?}", classes);
+        return Ok(());
     }
 
     if let Some(factory) = factory.cast::<dyn IPluginFactory2>() {
-        return scan2(factory);
+        let classes = scan2(factory);
+        println!("Classes [2]:\n{:#?}", classes);
+        return Ok(());
     }
 
-    scan1(factory)
+    let classes = scan1(factory)?;
+
+    println!("Classes [1]:\n{:#?}", classes);
+    Ok(())
 }
 
-fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<(), Box<dyn Error>> {
+fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<Vec<ClassInfo3>, Box<dyn Error>> {
     let count = unsafe { factory.count_classes() };
+
+    let mut classes = vec![];
 
     for i in 0..count {
         let mut info = MaybeUninit::<PClassInfoW>::uninit();
@@ -117,18 +155,44 @@ fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<(), Box<dyn Error>> {
         }
 
         let info = unsafe { info.assume_init() };
+
         let name = i16_to_string(&info.name);
-        println!(
-            "Class {} (Factory3): {:?} (category: {:?})",
-            i, name, info.class_flags
-        );
+        let category = i8_to_string(&info.category);
+        let cardinality = info.cardinality;
+        let cid = info.cid;
+        let class_flags = read_class_flags(info.class_flags);
+        let mut subcategories = vec![];
+
+        for sub in i8_to_string(&info.subcategories).split('|') {
+            if !sub.is_empty() {
+                subcategories.push(sub.to_owned());
+            }
+        }
+
+        let vendor = i16_to_string(&info.vendor);
+        let version = i16_to_string(&info.version);
+        let sdk_version = i16_to_string(&info.sdk_version);
+
+        classes.push(ClassInfo3 {
+            cid,
+            cardinality,
+            category,
+            name,
+            class_flags,
+            subcategories,
+            vendor,
+            version,
+            sdk_version,
+        });
     }
 
-    Ok(())
+    Ok(classes)
 }
 
-fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<(), Box<dyn Error>> {
+fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<Vec<ClassInfo2>, Box<dyn Error>> {
     let count = unsafe { factory.count_classes() };
+
+    let mut classes = vec![];
 
     for i in 0..count {
         let mut info = MaybeUninit::<PClassInfo2>::uninit();
@@ -141,20 +205,42 @@ fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<(), Box<dyn Error>> {
         let info = unsafe { info.assume_init() };
 
         let name = i8_to_string(&info.name);
-        let version = i8_to_string(&info.version);
-        let subcategories = i8_to_string(&info.subcategories);
+        let category = i8_to_string(&info.category);
+        let cardinality = info.cardinality;
+        let cid = info.cid;
+        let class_flags = read_class_flags(info.class_flags);
+        let mut subcategories = vec![];
 
-        println!(
-            "Class {} (Factory2): {} (version: {}, subcategories: {})",
-            i, name, version, subcategories,
-        );
+        for sub in i8_to_string(&info.subcategories).split('|') {
+            if !sub.is_empty() {
+                subcategories.push(sub.to_owned());
+            }
+        }
+
+        let vendor = i8_to_string(&info.vendor);
+        let version = i8_to_string(&info.version);
+        let sdk_version = i8_to_string(&info.sdk_version);
+
+        classes.push(ClassInfo2 {
+            cid,
+            cardinality,
+            category,
+            name,
+            class_flags,
+            subcategories,
+            vendor,
+            version,
+            sdk_version,
+        });
     }
 
-    Ok(())
+    Ok(classes)
 }
 
-fn scan1(factory: VstPtr<dyn IPluginFactory>) -> Result<(), Box<dyn Error>> {
+fn scan1(factory: VstPtr<dyn IPluginFactory>) -> Result<Vec<ClassInfo1>, Box<dyn Error>> {
     let count = unsafe { factory.count_classes() };
+
+    let mut classes = vec![];
 
     for i in 0..count {
         let mut info = MaybeUninit::<PClassInfo>::uninit();
@@ -168,9 +254,16 @@ fn scan1(factory: VstPtr<dyn IPluginFactory>) -> Result<(), Box<dyn Error>> {
 
         let name = i8_to_string(&info.name);
         let category = i8_to_string(&info.category);
+        let cardinality = info.cardinality;
+        let cid = info.cid;
 
-        println!("Class {} (Factory1): {} (category: {})", i, name, category,);
+        classes.push(ClassInfo1 {
+            cid,
+            cardinality,
+            category,
+            name,
+        });
     }
 
-    Ok(())
+    Ok(classes)
 }

@@ -4,11 +4,22 @@ pub type IID = GUID;
 
 #[derive(Debug)]
 pub enum FactoryFlags {
-    NoFlags,                 //  0
     ClassesDiscardable,      //  1
     LicenseCheck,            //  2
     ComponentNonDiscardable, //  8
     Unicode,                 // 16
+}
+
+#[derive(Debug)]
+pub enum ClassFlags {
+    IsSynth,         // 0x01
+    IsEffect,        // 0x02
+    Undef,           // 0x04
+    PluginDoesMidi,  // 0x08
+    PluginDoesAudio, // 0x10
+    NoAudioIO,       // 0x20
+    NeedMidiInput,   // 0x40
+    NeedMidiOutput,  // 0x80
 }
 
 #[derive(Debug)]
@@ -25,9 +36,9 @@ pub enum ClassCardinality {
 }
 
 #[derive(Debug)]
-pub struct ClassInfo {
+pub struct ClassInfo1 {
     pub cid: IID,
-    pub cardinality: ClassCardinality,
+    pub cardinality: i32,
     pub category: String, // [char8; 32]
     pub name: String,     // [char8; 64]
 }
@@ -35,25 +46,25 @@ pub struct ClassInfo {
 #[derive(Debug)]
 pub struct ClassInfo2 {
     pub cid: IID,
-    pub cardinality: ClassCardinality,
+    pub cardinality: i32,
     pub category: String, // [char8; 32]
     pub name: String,     // [char8; 64]
-    pub class_flags: u32,
-    pub subcategories: String, // [char8; 128]
-    pub vendor: String,        // [char8; 64]
-    pub version: String,       // [char8; 64]
-    pub sdk_version: String,   // [char8; 64]
+    pub class_flags: Vec<ClassFlags>,
+    pub subcategories: Vec<String>, // [char8; 128]
+    pub vendor: String,             // [char8; 64]
+    pub version: String,            // [char8; 64]
+    pub sdk_version: String,        // [char8; 64]
 }
 
 #[derive(Debug)]
 pub struct ClassInfo3 {
     pub cid: IID,
-    pub cardinality: ClassCardinality,
+    pub cardinality: i32,
     pub category: String, // [char8; 32]
     pub name: String,     // [char16; 64]
-    pub class_flags: u32,
-    pub subcategories: String, // [char8; 128]
-    pub vendor: String,        // [char16; 64]
-    pub version: String,       // [char16; 64]
-    pub sdk_version: String,   // [char16; 64]
+    pub class_flags: Vec<ClassFlags>,
+    pub subcategories: Vec<String>, // [char8; 128]
+    pub vendor: String,             // [char16; 64]
+    pub version: String,            // [char16; 64]
+    pub sdk_version: String,        // [char16; 64]
 }
