@@ -3,6 +3,12 @@ use vst3_sys::sys::GUID;
 pub type IID = GUID;
 
 #[derive(Debug)]
+pub struct Info {
+    pub factory_info: FactoryInfo,
+    pub classes: ClassesInfo,
+}
+
+#[derive(Debug)]
 pub enum FactoryFlags {
     ClassesDiscardable,      //  1
     LicenseCheck,            //  2
@@ -33,6 +39,13 @@ pub struct FactoryInfo {
 #[derive(Debug)]
 pub enum ClassCardinality {
     ManyInstances = 0x7FFF_FFFF,
+}
+
+#[derive(Debug)]
+pub enum ClassesInfo {
+    Classes1(Vec<ClassInfo1>),
+    Classes2(Vec<ClassInfo2>),
+    Classes3(Vec<ClassInfo3>),
 }
 
 #[derive(Debug)]

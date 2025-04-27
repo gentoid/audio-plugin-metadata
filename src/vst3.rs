@@ -1,7 +1,9 @@
 use std::{error::Error, mem::MaybeUninit, path::Path};
 
 use libloading::Library;
-use types::{ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, FactoryFlags, FactoryInfo};
+use types::{
+    ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, Info,
+};
 use vst3_sys::{
     VstPtr,
     base::{
@@ -17,7 +19,7 @@ use crate::{
 
 pub mod types;
 
-pub fn scan_vst3(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+pub fn scan_vst3(path: &Path) -> Result<Info, Box<dyn Error>> {
     let lib = unsafe { Library::new(path) }?;
 
     let get_factory: libloading::Symbol<Vst3Main> = unsafe { lib.get(b"GetPluginFactory\0") }?;
@@ -33,9 +35,12 @@ pub fn scan_vst3(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
     };
     let factory_info = read_factory_info(&factory)?;
 
-    println!("factory info = {:#?}", factory_info);
+    let classes = scan_classes(factory)?;
 
-    scan_classes(factory)
+    Ok(Info {
+        factory_info,
+        classes,
+    })
 }
 
 fn read_factory_info(factory: &VstPtr<dyn IPluginFactory>) -> Result<FactoryInfo, Box<dyn Error>> {
@@ -118,27 +123,19 @@ fn get_bit_and_shift(flags: &mut u32) -> bool {
     bit
 }
 
-fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<(), Box<dyn std::error::Error>> {
-    let count = unsafe { factory.count_classes() };
-
-    println!("Found {count} class(es):");
-
+fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<ClassesInfo, Box<dyn Error>> {
     if let Some(factory) = factory.cast::<dyn IPluginFactory3>() {
-        let classes = scan3(factory);
-        println!("Classes [3]:\n{:#?}", classes);
-        return Ok(());
+        let classes = scan3(factory)?;
+        return Ok(ClassesInfo::Classes3(classes));
     }
 
     if let Some(factory) = factory.cast::<dyn IPluginFactory2>() {
-        let classes = scan2(factory);
-        println!("Classes [2]:\n{:#?}", classes);
-        return Ok(());
+        let classes = scan2(factory)?;
+        return Ok(ClassesInfo::Classes2(classes));
     }
 
     let classes = scan1(factory)?;
-
-    println!("Classes [1]:\n{:#?}", classes);
-    Ok(())
+    Ok(ClassesInfo::Classes1(classes))
 }
 
 fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<Vec<ClassInfo3>, Box<dyn Error>> {
