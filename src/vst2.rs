@@ -1,14 +1,18 @@
 use std::{
     ffi::CStr,
     os::raw::{c_char, c_void},
-    path::PathBuf,
+    panic::{AssertUnwindSafe, catch_unwind},
+    path::Path,
     ptr::NonNull,
 };
 
-use libloading::{Library, Symbol};
+use libloading::Symbol;
+use types::{Vst2Category, Vst2Info, Vst2IntPtr, Vst2Main};
 use vst2_sys::{AEffect, effect_opcodes as opcode};
 
-use crate::types::{Vst2Category, Vst2Info, Vst2IntPtr, Vst2Main};
+use crate::lib_loader::load_dll;
+
+pub mod types;
 
 extern "C" fn dummy_host_callback(
     _effect: *mut AEffect,
@@ -21,18 +25,26 @@ extern "C" fn dummy_host_callback(
     match opcode {
         1 => 2100, // audioMasterVersion
         33 => {
+            if ptr.is_null() {
+                return 0;
+            }
+
             // audioMasterGetVendorString
             let s = b"MyHost\0";
             unsafe {
-                std::ptr::copy_nonoverlapping(s.as_ptr(), ptr as *mut u8, s.len());
+                std::ptr::copy_nonoverlapping(s.as_ptr(), ptr as *mut u8, s.len().min(64));
             }
             1
         }
         34 => {
+            if ptr.is_null() {
+                return 0;
+            }
+
             // audioMasterGetProductString
             let s = b"MyHostProduct\0";
             unsafe {
-                std::ptr::copy_nonoverlapping(s.as_ptr(), ptr as *mut u8, s.len());
+                std::ptr::copy_nonoverlapping(s.as_ptr(), ptr as *mut u8, s.len().min(64));
             }
             1
         }
@@ -42,24 +54,37 @@ extern "C" fn dummy_host_callback(
                 return 0;
             }
 
-            let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) };
-            println!("Can do {:?}?", cstr);
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) };
+                println!("Can do {:?}", cstr);
 
-            if let Ok(text) = cstr.to_str() {
-                match text {
-                    "sendVstTimeInfo" => 0,
-                    _ => 0,
+                if let Ok(text) = cstr.to_str() {
+                    match text {
+                        "sendVstTimeInfo" => 0,
+                        _ => 0,
+                    }
+                } else {
+                    0
                 }
-            } else {
-                0
+            }));
+
+            match result {
+                Ok(v) => v,
+                Err(_) => {
+                    eprintln!("CAN_DO panic: plugin passed invalid pointer or string");
+                    0
+                }
             }
         }
-        _ => 0,
+        _ => {
+            println!("Unhandled host opcode: {}", opcode);
+            0
+        }
     }
 }
 
-pub fn scan_vst2(path: &PathBuf) -> Result<Vst2Info, Box<dyn std::error::Error>> {
-    let lib = unsafe { Library::new(path) }?;
+pub fn scan_vst2(path: &Path) -> Result<Vst2Info, Box<dyn std::error::Error>> {
+    let lib = load_dll(path)?;
 
     let vst_main: Symbol<Vst2Main> =
         unsafe { lib.get(b"VSTPluginMain").or_else(|_| lib.get(b"main"))? };
@@ -82,7 +107,6 @@ pub fn scan_vst2(path: &PathBuf) -> Result<Vst2Info, Box<dyn std::error::Error>>
     let category_raw = get_num(eff, opcode::GET_PLUG_CATEGORY) as i32;
 
     let info = Vst2Info {
-        path: path.to_owned(),
         name,
         vendor: get_string(eff, opcode::GET_VENDOR_STRING),
         version: eff.version as u32,

@@ -1,8 +1,9 @@
-use std::{error::Error, mem::MaybeUninit, path::PathBuf};
-
+use crate::utils::{i8_to_string, i16_to_string};
 use libloading::Library;
+use std::{error::Error, mem::MaybeUninit, path::Path};
 use types::{
-    ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, Vst3Info,
+    ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, IID,
+    Vst3Info, Vst3Main,
 };
 use vst3_sys::{
     VstPtr,
@@ -12,14 +13,9 @@ use vst3_sys::{
     },
 };
 
-use crate::{
-    types::Vst3Main,
-    utils::{i8_to_string, i16_to_string},
-};
-
 pub mod types;
 
-pub fn scan_vst3(path: &PathBuf) -> Result<Vst3Info, Box<dyn Error>> {
+pub fn scan_vst3(path: &Path) -> Result<Vst3Info, Box<dyn Error>> {
     let lib = unsafe { Library::new(path) }?;
 
     let get_factory: libloading::Symbol<Vst3Main> = unsafe { lib.get(b"GetPluginFactory\0") }?;
@@ -33,12 +29,11 @@ pub fn scan_vst3(path: &PathBuf) -> Result<Vst3Info, Box<dyn Error>> {
         VstPtr::<dyn IPluginFactory>::owned(factory_ptr as *mut *mut _)
             .ok_or("Failed to create VstPtr for factory")?
     };
-    let factory_info = read_factory_info(&factory)?;
 
+    let factory_info = read_factory_info(&factory)?;
     let classes = scan_classes(factory)?;
 
     Ok(Vst3Info {
-        path: path.clone(),
         factory_info,
         classes,
     })
@@ -49,7 +44,7 @@ fn read_factory_info(factory: &VstPtr<dyn IPluginFactory>) -> Result<FactoryInfo
     let res = unsafe { factory.get_factory_info(info.as_mut_ptr()) };
 
     if res != kResultOk {
-        return Err(format!("get_factory_info failed").into());
+        return Err("get_factory_info failed".into());
     }
 
     let info = unsafe { info.assume_init() };
@@ -118,6 +113,7 @@ fn read_class_flags(mut flags: u32) -> Vec<ClassFlags> {
     classes
 }
 
+// mut u32
 fn get_bit_and_shift(flags: &mut u32) -> bool {
     let bit = (*flags) & 1 == 1;
     (*flags) >>= 1;
@@ -157,15 +153,15 @@ fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<Vec<ClassInfo3>, Box<dy
         let name = i16_to_string(&info.name);
         let category = i8_to_string(&info.category);
         let cardinality = info.cardinality;
-        let cid = info.cid;
+        let cid = IID {
+            data: info.cid.data,
+        };
         let class_flags = read_class_flags(info.class_flags);
-        let mut subcategories = vec![];
-
-        for sub in i8_to_string(&info.subcategories).split('|') {
-            if !sub.is_empty() {
-                subcategories.push(sub.to_owned());
-            }
-        }
+        let subcategories = i8_to_string(&info.subcategories)
+            .split('|')
+            .filter(|&s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect();
 
         let vendor = i16_to_string(&info.vendor);
         let version = i16_to_string(&info.version);
@@ -205,15 +201,15 @@ fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<Vec<ClassInfo2>, Box<dy
         let name = i8_to_string(&info.name);
         let category = i8_to_string(&info.category);
         let cardinality = info.cardinality;
-        let cid = info.cid;
+        let cid = IID {
+            data: info.cid.data,
+        };
         let class_flags = read_class_flags(info.class_flags);
-        let mut subcategories = vec![];
-
-        for sub in i8_to_string(&info.subcategories).split('|') {
-            if !sub.is_empty() {
-                subcategories.push(sub.to_owned());
-            }
-        }
+        let subcategories = i8_to_string(&info.subcategories)
+            .split('|')
+            .filter(|&s| !s.is_empty())
+            .map(|s| s.to_owned())
+            .collect();
 
         let vendor = i8_to_string(&info.vendor);
         let version = i8_to_string(&info.version);
@@ -253,7 +249,9 @@ fn scan1(factory: VstPtr<dyn IPluginFactory>) -> Result<Vec<ClassInfo1>, Box<dyn
         let name = i8_to_string(&info.name);
         let category = i8_to_string(&info.category);
         let cardinality = info.cardinality;
-        let cid = info.cid;
+        let cid = IID {
+            data: info.cid.data,
+        };
 
         classes.push(ClassInfo1 {
             cid,

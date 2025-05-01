@@ -1,17 +1,23 @@
-use std::path::PathBuf;
+use std::ffi::c_void;
 
-use vst3_sys::sys::GUID;
+use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
-pub type IID = GUID;
+pub type Vst3Main = unsafe extern "system" fn() -> *mut c_void;
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
+pub struct IID {
+    /// bytes of the GUID
+    pub data: [u8; 16],
+}
+
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct Vst3Info {
-    pub path: PathBuf,
     pub factory_info: FactoryInfo,
     pub classes: ClassesInfo,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub enum FactoryFlags {
     ClassesDiscardable,      //  1
     LicenseCheck,            //  2
@@ -19,7 +25,7 @@ pub enum FactoryFlags {
     Unicode,                 // 16
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub enum ClassFlags {
     IsSynth,         // 0x01
     IsEffect,        // 0x02
@@ -31,7 +37,7 @@ pub enum ClassFlags {
     NeedMidiOutput,  // 0x80
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct FactoryInfo {
     pub vendor: String, // [char8; 64]
     pub url: String,    // [char8; 256]
@@ -44,14 +50,14 @@ pub enum ClassCardinality {
     ManyInstances = 0x7FFF_FFFF,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub enum ClassesInfo {
     Classes1(Vec<ClassInfo1>),
     Classes2(Vec<ClassInfo2>),
     Classes3(Vec<ClassInfo3>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct ClassInfo1 {
     pub cid: IID,
     pub cardinality: i32,
@@ -59,7 +65,7 @@ pub struct ClassInfo1 {
     pub name: String,     // [char8; 64]
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct ClassInfo2 {
     pub cid: IID,
     pub cardinality: i32,
@@ -72,7 +78,7 @@ pub struct ClassInfo2 {
     pub sdk_version: String,        // [char8; 64]
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, Encode, Decode)]
 pub struct ClassInfo3 {
     pub cid: IID,
     pub cardinality: i32,
