@@ -5,6 +5,7 @@ use vst2::scan_vst2;
 use vst3::scan_vst3;
 
 pub mod arch;
+pub mod lib_loader;
 pub mod scan;
 pub mod types;
 pub mod utils;
