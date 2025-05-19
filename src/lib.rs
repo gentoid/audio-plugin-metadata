@@ -15,7 +15,9 @@ pub mod vst3;
 pub fn scan_file(path: &Path) -> Result<PluginInfo, Box<dyn Error>> {
     if let Some(ext) = path.extension() {
         if ext == OsStr::new("vst3") {
-            return scan_vst3(path).map(PluginInfo::Vst3);
+            let loader = scan_vst3(path)?;
+            let vst3_info = loader.read_info()?;
+            return Ok(PluginInfo::Vst3(vst3_info));
         }
 
         if ext == OsStr::new("dll") {

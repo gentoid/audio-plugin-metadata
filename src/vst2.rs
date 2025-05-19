@@ -7,6 +7,7 @@ use std::{
 };
 
 use libloading::Symbol;
+use tracing::{debug, error};
 use types::{Vst2Category, Vst2Info, Vst2IntPtr, Vst2Main};
 use vst2_sys::{AEffect, effect_opcodes as opcode};
 
@@ -56,7 +57,7 @@ extern "C" fn dummy_host_callback(
 
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let cstr = unsafe { CStr::from_ptr(ptr as *const c_char) };
-                println!("Can do {:?}", cstr);
+                debug!("Can do {:?}", cstr);
 
                 if let Ok(text) = cstr.to_str() {
                     match text {
@@ -71,13 +72,13 @@ extern "C" fn dummy_host_callback(
             match result {
                 Ok(v) => v,
                 Err(_) => {
-                    eprintln!("CAN_DO panic: plugin passed invalid pointer or string");
+                    error!("CAN_DO panic: plugin passed invalid pointer or string");
                     0
                 }
             }
         }
         _ => {
-            println!("Unhandled host opcode: {}", opcode);
+            debug!("Unhandled host opcode: {}", opcode);
             0
         }
     }

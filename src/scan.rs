@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
-pub fn scan_path<'a>(root: &'a Path, extensions: &'a [&str]) -> impl Iterator<Item = PathBuf> + 'a {
+pub fn scan_path<'a>(root: &Path, extensions: &'a [&str]) -> impl Iterator<Item = PathBuf> + 'a {
     WalkDir::new(root)
         .into_iter()
         .filter_map(Result::ok)

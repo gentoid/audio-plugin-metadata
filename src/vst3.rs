@@ -1,6 +1,7 @@
 use crate::utils::{i8_to_string, i16_to_string};
 use libloading::Library;
 use std::{error::Error, mem::MaybeUninit, path::Path};
+use tracing::{debug, error, info};
 use types::{
     ClassFlags, ClassInfo1, ClassInfo2, ClassInfo3, ClassesInfo, FactoryFlags, FactoryInfo, IID,
     Vst3Info, Vst3Main,
@@ -12,10 +13,41 @@ use vst3_sys::{
         PFactoryInfo, kResultOk,
     },
 };
+use windows_sys::Win32::{
+    Foundation::{S_FALSE, S_OK},
+    System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx},
+};
 
 pub mod types;
 
-pub fn scan_vst3(path: &Path) -> Result<Vst3Info, Box<dyn Error>> {
+pub struct LoadedVst3 {
+    pub lib: Library,
+    pub factory: VstPtr<dyn IPluginFactory>,
+}
+
+impl LoadedVst3 {
+    pub fn read_info(&self) -> Result<Vst3Info, Box<dyn Error>> {
+        let classes = scan_classes(self.factory.clone())?;
+        let factory_info = read_factory_info(&self.factory)?;
+
+        info!("CLASSES: {classes:#?}");
+
+        Ok(Vst3Info {
+            factory_info,
+            classes,
+        })
+    }
+}
+
+pub fn scan_vst3(path: &Path) -> Result<LoadedVst3, Box<dyn Error>> {
+    unsafe {
+        let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED as u32);
+        if hr != S_OK && hr != S_FALSE {
+            return Err(format!("CoInitializeEx failed: HRESULT 0x{:X}", hr).into());
+        }
+    };
+
+    info!("Going to scan VST3 {}", path.display());
     let lib = unsafe { Library::new(path) }?;
 
     let get_factory: libloading::Symbol<Vst3Main> = unsafe { lib.get(b"GetPluginFactory\0") }?;
@@ -26,33 +58,43 @@ pub fn scan_vst3(path: &Path) -> Result<Vst3Info, Box<dyn Error>> {
     }
 
     let factory = unsafe {
-        VstPtr::<dyn IPluginFactory>::owned(factory_ptr as *mut *mut _)
-            .ok_or("Failed to create VstPtr for factory")?
+        VstPtr::<dyn IPluginFactory>::owned(factory_ptr as *mut _)
+            .ok_or("Failed to cast to IPluginFactory")?
     };
 
-    let factory_info = read_factory_info(&factory)?;
-    let classes = scan_classes(factory)?;
+    // if factory.
 
-    Ok(Vst3Info {
-        factory_info,
-        classes,
-    })
+    Ok(LoadedVst3 { lib, factory })
 }
 
 fn read_factory_info(factory: &VstPtr<dyn IPluginFactory>) -> Result<FactoryInfo, Box<dyn Error>> {
+    info!("Going to read factory info");
     let mut info = MaybeUninit::<PFactoryInfo>::uninit();
+    debug!("PTR: {:?}", info.as_mut_ptr());
+
+    let factory_ptr_2 = factory.as_ptr();
+    if factory_ptr_2.is_null() {
+        error!("It is null?!");
+        return Err("Plugin factory is null. Why?".into());
+    }
+
+    info!("Going to read factory info [-1]");
     let res = unsafe { factory.get_factory_info(info.as_mut_ptr()) };
 
+    info!("Going to read factory info [0]");
     if res != kResultOk {
         return Err("get_factory_info failed".into());
     }
 
+    info!("Going to read factory info [1]");
     let info = unsafe { info.assume_init() };
 
+    info!("Going to read factory info [2]");
     let vendor = i8_to_string(&info.vendor);
     let url = i8_to_string(&info.url);
     let email = i8_to_string(&info.email);
 
+    info!("Going to read factory info [3]");
     Ok(FactoryInfo {
         vendor,
         url,
@@ -62,6 +104,7 @@ fn read_factory_info(factory: &VstPtr<dyn IPluginFactory>) -> Result<FactoryInfo
 }
 
 fn read_flags(mut flags: i32) -> Vec<FactoryFlags> {
+    info!("Going to read flags {flags}");
     let mut res = vec![];
 
     if flags >= 32 {
@@ -91,6 +134,7 @@ fn read_flags(mut flags: i32) -> Vec<FactoryFlags> {
 }
 
 fn read_class_flags(mut flags: u32) -> Vec<ClassFlags> {
+    info!("Going to read class flags {flags}");
     let mut classes = vec![];
 
     let all_flags = [
@@ -113,7 +157,6 @@ fn read_class_flags(mut flags: u32) -> Vec<ClassFlags> {
     classes
 }
 
-// mut u32
 fn get_bit_and_shift(flags: &mut u32) -> bool {
     let bit = (*flags) & 1 == 1;
     (*flags) >>= 1;
@@ -121,6 +164,7 @@ fn get_bit_and_shift(flags: &mut u32) -> bool {
 }
 
 fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<ClassesInfo, Box<dyn Error>> {
+    info!("Going to scan classes");
     if let Some(factory) = factory.cast::<dyn IPluginFactory3>() {
         let classes = scan3(factory)?;
         return Ok(ClassesInfo::Classes3(classes));
@@ -136,6 +180,7 @@ fn scan_classes(factory: VstPtr<dyn IPluginFactory>) -> Result<ClassesInfo, Box<
 }
 
 fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<Vec<ClassInfo3>, Box<dyn Error>> {
+    info!("Going to scan classes [3]");
     let count = unsafe { factory.count_classes() };
 
     let mut classes = vec![];
@@ -184,6 +229,7 @@ fn scan3(factory: VstPtr<dyn IPluginFactory3>) -> Result<Vec<ClassInfo3>, Box<dy
 }
 
 fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<Vec<ClassInfo2>, Box<dyn Error>> {
+    info!("Going to scan classes [2]");
     let count = unsafe { factory.count_classes() };
 
     let mut classes = vec![];
@@ -232,6 +278,7 @@ fn scan2(factory: VstPtr<dyn IPluginFactory2>) -> Result<Vec<ClassInfo2>, Box<dy
 }
 
 fn scan1(factory: VstPtr<dyn IPluginFactory>) -> Result<Vec<ClassInfo1>, Box<dyn Error>> {
+    info!("Going to scan classes [1]");
     let count = unsafe { factory.count_classes() };
 
     let mut classes = vec![];
